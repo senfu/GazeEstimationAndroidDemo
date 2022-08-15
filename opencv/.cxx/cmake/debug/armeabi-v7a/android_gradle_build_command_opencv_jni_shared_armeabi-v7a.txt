@@ -1,0 +1,7 @@
+Executable : /home/lijunyan/Android/Sdk/cmake/3.10.2.4988404/bin/ninja
+arguments : 
+-C
+/home/lijunyan/AndroidStudioProjects/Object detection/opencv/.cxx/cmake/debug/armeabi-v7a
+opencv_jni_shared
+jvmArgs : 
+

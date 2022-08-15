@@ -1,0 +1,7 @@
+Executable : /home/lijunyan/Android/Sdk/cmake/3.18.1/bin/ninja
+arguments : 
+-C
+/home/lijunyan/AndroidStudioProjects/Gaze Estimation/opencv/.cxx/Debug/3r83v6a5/x86
+opencv_jni_shared
+jvmArgs : 
+

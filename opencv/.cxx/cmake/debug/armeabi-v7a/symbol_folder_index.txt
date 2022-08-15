@@ -1,0 +1,1 @@
+/home/lijunyan/AndroidStudioProjects/Object detection/opencv/build/intermediates/cmake/debug/obj/armeabi-v7a

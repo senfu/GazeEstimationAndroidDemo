@@ -1,0 +1,3 @@
+/home/lijunyan/AndroidStudioProjects/Gaze Estimation/opencv/.cxx/Debug/3r83v6a5/x86_64/CMakeFiles/rebuild_cache.dir
+/home/lijunyan/AndroidStudioProjects/Gaze Estimation/opencv/.cxx/Debug/3r83v6a5/x86_64/CMakeFiles/edit_cache.dir
+/home/lijunyan/AndroidStudioProjects/Gaze Estimation/opencv/.cxx/Debug/3r83v6a5/x86_64/CMakeFiles/opencv_jni_shared.dir
