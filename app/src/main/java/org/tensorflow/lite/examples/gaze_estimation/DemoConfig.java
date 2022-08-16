@@ -6,6 +6,7 @@ public class DemoConfig {
     final public static float confidence_thres = 0.6f;
 
     final public static Boolean USE_VERTICAL = true;
+    final public static Boolean USE_FRONT_CAM = true;
 
     final public static String face_detection_model_path = "/data/local/tmp/face_detection.dlc";
     final public static int face_detection_input_H = 160;

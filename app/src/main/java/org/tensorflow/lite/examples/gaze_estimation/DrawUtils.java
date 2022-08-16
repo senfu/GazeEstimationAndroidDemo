@@ -22,8 +22,6 @@ public class DrawUtils {
         Log.d("yolox_output_boxes", String.valueOf(boxes.length));
         for(int b = 0; b < boxes.length; b++){
             int box_color = G_color;
-            float score = boxes[b][4];
-            Log.d("yolox_output_score", String.valueOf(score));
             int x1 = (int)(boxes[b][0]);
             int y1 = (int)(boxes[b][1]);
             int x2 = (int)(boxes[b][2]);

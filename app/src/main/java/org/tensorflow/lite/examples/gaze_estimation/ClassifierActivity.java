@@ -35,9 +35,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Vector;
 
 import org.opencv.android.Utils;
 import org.opencv.core.Mat;
+import org.opencv.imgproc.Imgproc;
 import org.tensorflow.lite.examples.gaze_estimation.env.BorderedText;
 import org.tensorflow.lite.examples.gaze_estimation.env.ImageUtils;
 import org.tensorflow.lite.examples.gaze_estimation.env.Logger;
@@ -65,6 +67,8 @@ import static org.tensorflow.lite.examples.gaze_estimation.DetectionUtils.postpr
 import static org.tensorflow.lite.examples.gaze_estimation.DrawUtils.drawbox;
 import static org.tensorflow.lite.examples.gaze_estimation.DrawUtils.drawgaze;
 import static org.tensorflow.lite.examples.gaze_estimation.DrawUtils.drawlandmark;
+import static org.tensorflow.lite.examples.gaze_estimation.Smoother.concat_prediction;
+import static org.tensorflow.lite.examples.gaze_estimation.Smoother.split_prediction;
 
 public class ClassifierActivity extends CameraActivity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
@@ -92,6 +96,8 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   private float[] face_detection_input = new float[DemoConfig.getFaceDetectionInputsize()];
   private float[] NNoutput = null;
   Bitmap detection = null;
+  SmootherList smoother_list = null;
+
   @Override
   protected int getLayoutId() {
     return R.layout.camera_connection_fragment;
@@ -176,6 +182,8 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     face_detection_network = setupNetwork(DemoConfig.face_detection_model_path, DemoConfig.face_detection_model_op_out, GPU);
     landmark_detection_network = setupNetwork(DemoConfig.landmark_detection_model_path, DemoConfig.landmark_detection_model_op_out, GPU);
     gaze_estimation_network = setupNetwork(DemoConfig.gaze_estimation_model_path, DemoConfig.gaze_estimation_model_op_out, GPU);
+
+    smoother_list = new SmootherList();
   }
 
   long inferencetime;
@@ -186,6 +194,8 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
   @Override
 
   protected Bitmap processImage() {
+    inferencetime = 0;
+
     rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
 
     //transform and crop the frame
@@ -213,20 +223,14 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     preprocessing(cropCopyBitmap, face_detection_input);
     face_detection_tensor = face_detection_network.createFloatTensor(1, DemoConfig.face_detection_input_H, DemoConfig.face_detection_input_W, DemoConfig.face_detection_input_C);
     face_detection_tensor.write(face_detection_input, 0, DemoConfig.getFaceDetectionInputsize());
-    lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-    Log.d("weiming", "processImage PRE time: " + lastProcessingTimeMs);
-    latency = lastProcessingTimeMs;
 
     //inference with snpe
     final Map<String, FloatTensor> inputsMap = new HashMap<>();
     inputsMap.put("full_image", face_detection_tensor);
-    startTime = SystemClock.uptimeMillis();
+    long inferStartTime = SystemClock.uptimeMillis();
     final Map<String, FloatTensor> outputsMap = face_detection_network.execute(inputsMap);
-    lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-    inferencetime = lastProcessingTimeMs;
-    latency += lastProcessingTimeMs;
+    inferencetime += SystemClock.uptimeMillis() - inferStartTime;
 
-    startTime = SystemClock.uptimeMillis();
     float[][] boxes = null;
     for (Map.Entry<String, FloatTensor> output : outputsMap.entrySet()) {
       final FloatTensor tensor = output.getValue();
@@ -245,20 +249,24 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
     Mat img = bitmap2mat(croppedBitmap);
 
-    List<float[]> landmarks = new ArrayList();
-    List<float[]> gazes = new ArrayList();
+    Vector<float[]> landmarks = new Vector<float[]>();
+    Vector<float[]> gazes = new Vector<float[]>();
     // landmark detection start
     if (boxes != null && boxes.length != 0 && boxes[0][0] != 0) {
+      Vector<double[]> predictions = new Vector<double[]>();
       for (float[] box : boxes) {
-        if (box[0] == 0 && box[1] == 0 && box[2] == 0 && box[3] == 0)
-          continue;
+        if (box[0] == 0 && box[1] == 0 && box[2] == 0 && box[3] == 0) {
+          break;
+        }
         ProcessFactory.LandmarkPreprocessResult landmark_preprocess_result = landmark_preprocess(img, box);
         float[] landmark_detection_input = landmark_preprocess_result.input;
         landmark_detection_tensor = landmark_detection_network.createFloatTensor(1, DemoConfig.landmark_detection_input_H, DemoConfig.landmark_detection_input_W, DemoConfig.landmark_detection_input_C);
         landmark_detection_tensor.write(landmark_detection_input, 0, DemoConfig.getLandmarkDetectionInputsize());
         final Map<String, FloatTensor> LandmarkInputsMap = new HashMap<>();
         LandmarkInputsMap.put("face_image", landmark_detection_tensor);
+        inferStartTime = SystemClock.uptimeMillis();
         final Map<String, FloatTensor> LandmarkOutputsMap = landmark_detection_network.execute(LandmarkInputsMap);
+        inferencetime += SystemClock.uptimeMillis() - inferStartTime;
         for (Map.Entry<String, FloatTensor> output : LandmarkOutputsMap.entrySet()) {
           final FloatTensor tensor = output.getValue();
           if (output.getKey().equals(DemoConfig.landmark_detection_model_out)) {
@@ -266,7 +274,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
             tensor.read(NNoutput, 0, NNoutput.length);
             Log.d("landmark_detection", String.valueOf(NNoutput.length));
             float[] landmark = landmark_postprocess(landmark_preprocess_result, NNoutput);
-            landmarks.add(landmark);
+            landmarks.addElement(landmark);
             ProcessFactory.GazePreprocessResult gaze_preprocess_result = gaze_preprocess(img, landmark);
             gaze_estimation_face_tensor = gaze_estimation_network.createFloatTensor(1, DemoConfig.gaze_estimation_face_input_H, DemoConfig.gaze_estimation_face_input_W, DemoConfig.gaze_estimation_face_input_C);
             gaze_estimation_leye_tensor = gaze_estimation_network.createFloatTensor(1, DemoConfig.gaze_estimation_eye_input_H, DemoConfig.gaze_estimation_eye_input_W, DemoConfig.gaze_estimation_eye_input_C);
@@ -275,11 +283,16 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
             gaze_estimation_leye_tensor.write(gaze_preprocess_result.leye, 0, DemoConfig.getGazeEstimationEyeInputsize());
             gaze_estimation_reye_tensor.write(gaze_preprocess_result.reye, 0, DemoConfig.getGazeEstimationEyeInputsize());
 
+            // DEBUG
+            // Imgproc.resize(gaze_preprocess_result.face_mat, img, new org.opencv.core.Size(480, 480));
+
             final Map<String, FloatTensor> GazeInputsMap = new HashMap<>();
             GazeInputsMap.put("left_eye", gaze_estimation_leye_tensor);
             GazeInputsMap.put("right_eye", gaze_estimation_reye_tensor);
             GazeInputsMap.put("face", gaze_estimation_face_tensor);
+            inferStartTime = SystemClock.uptimeMillis();
             final Map<String, FloatTensor> GazeOutputsMap = gaze_estimation_network.execute(GazeInputsMap);
+            inferencetime += SystemClock.uptimeMillis() - inferStartTime;
             for (Map.Entry<String, FloatTensor> gaze_output : GazeOutputsMap.entrySet()) {
               final FloatTensor gaze_tensor = gaze_output.getValue();
               if (gaze_output.getKey().equals(DemoConfig.gaze_estimation_model_out)) {
@@ -287,16 +300,29 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
                 gaze_tensor.read(NNoutput, 0, NNoutput.length);
                 Log.d("gaze_estimation", String.valueOf(NNoutput[0])+" "+String.valueOf(NNoutput[1])+" "+String.valueOf(NNoutput.length));
                 float[] gaze_pitchyaw = gaze_postprocess(NNoutput, gaze_preprocess_result.R);
-                gazes.add(gaze_pitchyaw);
+                gazes.addElement(gaze_pitchyaw);
+                double[] prediction = concat_prediction(box, landmark, gaze_pitchyaw);
+                predictions.addElement(prediction);
               }
             }
           }
         }
       }
       // landamrk detection end
-
+      predictions = smoother_list.smooth_and_update(predictions, (double)System.currentTimeMillis() / 1000.0);
+      for (int i=0;i<predictions.size();i++) {
+        float[] box = new float[4];
+        float[] landmark = new float[98*2];
+        float[] gaze_pitchyaw = new float[2];
+        Log.d("BOX_SMOOTH_BEFORE", boxes[i][0] + " " + boxes[i][1] + " " + boxes[i][2] + " " + boxes[i][3]);
+        split_prediction(predictions.elementAt(i), box, landmark, gaze_pitchyaw);
+        boxes[i] = box;
+        Log.d("BOX_SMOOTH_AFTER", boxes[i][0] + " " + boxes[i][1] + " " + boxes[i][2] + " " + boxes[i][3]);
+        landmarks.setElementAt(landmark, i);
+        gazes.setElementAt(gaze_pitchyaw, i);
+      }
       for (int i=0;i<gazes.size();i++) {
-        drawgaze(img, gazes.get(i), landmarks.get(i));
+        drawgaze(img, gazes.elementAt(i), landmarks.elementAt(i));
       }
       Utils.matToBitmap(img, croppedBitmap);
       croppedBitmap.getPixels(pixs,0, DemoConfig.crop_W, 0, 0,DemoConfig.crop_W, DemoConfig.crop_H);
@@ -308,7 +334,6 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
       croppedBitmap.getPixels(pixs,0, DemoConfig.crop_W, 0, 0,DemoConfig.crop_W, DemoConfig.crop_H);
     }
 
-    Log.d("weiming","load: " + (SystemClock.uptimeMillis() - startTime));
     //transpose
     if(!DemoConfig.USE_VERTICAL) {
       transpose(pixs, pixs_out, DemoConfig.crop_H, DemoConfig.crop_W);
@@ -318,8 +343,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
       detection.setPixels(pixs, 0, DemoConfig.crop_H, 0, 0, DemoConfig.crop_H, DemoConfig.crop_W);
     }
     lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
-    latency+=lastProcessingTimeMs;
-    Log.d("weiming","POST: " + lastProcessingTimeMs);
+    latency=lastProcessingTimeMs;
 
     runInBackground(
         new Runnable() {
