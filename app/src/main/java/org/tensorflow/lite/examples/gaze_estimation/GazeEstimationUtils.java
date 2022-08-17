@@ -36,7 +36,7 @@ public class GazeEstimationUtils {
     private final static Point3 p11 = new Point3( 25.941687, -19.458733,  47.212223);
     private final static Point3 p12 = new Point3(  0.      , -29.143637,  57.023403);
     private final static Point3 p13 = new Point3(  0.      , -69.34913 ,  38.065376);
-    private final static MatOfPoint3f face_model = new MatOfPoint3f(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
+    public final static MatOfPoint3f face_model = new MatOfPoint3f(p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13);
 
     public static Point[] extract_critical_landmarks(float[] landmark) {
         Point[] critical_landmark = new Point[TRACKED_POINTS.length];

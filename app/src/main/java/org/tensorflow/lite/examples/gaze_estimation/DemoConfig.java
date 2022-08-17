@@ -2,11 +2,21 @@ package org.tensorflow.lite.examples.gaze_estimation;
 
 public class DemoConfig {
     /* application config */
-    final public static float thres = 0.45f;
-    final public static float confidence_thres = 0.6f;
+    final public static float NMS_THR = 0.45f;
+    final public static float CONF_THR = 0.5f;
+
+    public final static double REID_DIFF_THR = 50.0f;
+    public final static int REID_MAX_TICK = 20;
 
     final public static Boolean USE_VERTICAL = true;
     final public static Boolean USE_FRONT_CAM = true;
+
+    final public static double face_min_cutoff = 0.01;
+    final public static double face_beta = 0.1;
+    final public static double landmark_min_cutoff = 0.01;
+    final public static double landmark_beta = 0.1;
+    final public static double gaze_min_cutoff = 0.01;
+    final public static double gaze_beta = 0.8;
 
     final public static String face_detection_model_path = "/data/local/tmp/face_detection.dlc";
     final public static int face_detection_input_H = 160;

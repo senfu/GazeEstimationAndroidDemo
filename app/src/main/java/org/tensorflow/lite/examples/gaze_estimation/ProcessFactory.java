@@ -26,7 +26,7 @@ public class ProcessFactory {
     public static class GazePreprocessResult {
         public float[] face, leye, reye;
         public Mat R, rvec, tvec;
-        public Mat face_mat, leye_mat, reye_mat;
+        public Mat face_mat, leye_mat, reye_mat, camera_matrix;
     }
 
     public static Mat bitmap2mat(Bitmap bmp) {
@@ -79,7 +79,7 @@ public class ProcessFactory {
         int cx = x1 + w / 2;
         int cy = y1 + h / 2;
 
-        int size = (int)(Math.max(w, h) * 1.11);
+        int size = (int)(Math.max(w, h) * 1.15);
         x1 = cx - size / 2;
         x2 = x1 + size;
         y1 = cy - size / 2;
@@ -142,6 +142,7 @@ public class ProcessFactory {
         result.R = R;
         result.tvec = tvec;
         result.rvec = rvec;
+        result.camera_matrix = camera_matrix;
 
         result.face_mat = (Mat)data.get(2);
         result.leye_mat = (Mat)data.get(0);

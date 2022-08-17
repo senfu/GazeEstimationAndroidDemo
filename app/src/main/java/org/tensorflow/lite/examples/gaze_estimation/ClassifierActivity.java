@@ -18,6 +18,7 @@ package org.tensorflow.lite.examples.gaze_estimation;
 
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Matrix;
 import android.graphics.Typeface;
@@ -38,6 +39,7 @@ import java.util.Map;
 import java.util.Vector;
 
 import org.opencv.android.Utils;
+import org.opencv.core.Core;
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
 import org.tensorflow.lite.examples.gaze_estimation.env.BorderedText;
@@ -66,9 +68,8 @@ import static org.tensorflow.lite.examples.gaze_estimation.DetectionUtils.transp
 import static org.tensorflow.lite.examples.gaze_estimation.DetectionUtils.postprocessing;
 import static org.tensorflow.lite.examples.gaze_estimation.DrawUtils.drawbox;
 import static org.tensorflow.lite.examples.gaze_estimation.DrawUtils.drawgaze;
+import static org.tensorflow.lite.examples.gaze_estimation.DrawUtils.drawheadpose;
 import static org.tensorflow.lite.examples.gaze_estimation.DrawUtils.drawlandmark;
-import static org.tensorflow.lite.examples.gaze_estimation.Smoother.concat_prediction;
-import static org.tensorflow.lite.examples.gaze_estimation.Smoother.split_prediction;
 
 public class ClassifierActivity extends CameraActivity implements OnImageAvailableListener {
   private static final Logger LOGGER = new Logger();
@@ -195,22 +196,28 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
 
   protected Bitmap processImage() {
     inferencetime = 0;
-
     rgbFrameBitmap.setPixels(getRgbBytes(), 0, previewWidth, 0, 0, previewWidth, previewHeight);
 
     //transform and crop the frame
     final Canvas canvas = new Canvas(croppedBitmap);
     canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
 
-    /*
+    if (DemoConfig.USE_FRONT_CAM) {
+      // flip the camera image
+      Mat mm = bitmap2mat(croppedBitmap);
+      Core.flip(mm, mm, 0);
+      Utils.matToBitmap(mm, croppedBitmap);
+    }
+
+/*
     // DEBUG IMAGE START
-    Mat mm = bitmap2mat(BitmapFactory.decodeResource(getResources(), R.drawable.sample480x480));
+    Mat mm = bitmap2mat(BitmapFactory.decodeResource(getResources(), R.drawable.sample10));
     Imgproc.resize(mm, mm, new org.opencv.core.Size(480, 480));
     croppedBitmap = Bitmap.createBitmap(DemoConfig.crop_W, DemoConfig.crop_H, Config.ARGB_8888);
     Utils.matToBitmap(mm, croppedBitmap);
     Log.d("BITMAP_SIZE", croppedBitmap.getWidth() + " " + croppedBitmap.getHeight());
     // DEBUG IMAGE END
-    */
+*/
 
     DetectionUtils.scaleResult scale_result = scale(croppedBitmap, DemoConfig.face_detection_input_W, DemoConfig.face_detection_input_H);
     cropCopyBitmap = scale_result.scaledBitmap;
@@ -218,6 +225,9 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     float ratioY = scale_result.ratioY;
     //convert to floating point
     long startTime = SystemClock.uptimeMillis();
+    final double CURRENT_TIMESTAMP = (double)System.currentTimeMillis() / 1000.0;
+    // Log.d("TIME_DEBUG", String.valueOf(System.currentTimeMillis()));
+    // Log.d("TIME_DEBUG", String.valueOf(CURRENT_TIMESTAMP));
 
     // face detection start
     preprocessing(cropCopyBitmap, face_detection_input);
@@ -248,16 +258,34 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     // face detection end
 
     Mat img = bitmap2mat(croppedBitmap);
+    // Log.d("DEBUG_IMG_SIZE", img.size() + " " + croppedBitmap.getWidth() + "x"+croppedBitmap.getHeight() + " " + cropCopyBitmap.getWidth() + "x" + cropCopyBitmap.getHeight());
 
     Vector<float[]> landmarks = new Vector<float[]>();
     Vector<float[]> gazes = new Vector<float[]>();
+    Vector<Mat> tvecs = new Vector<Mat>();
+    Vector<Mat> rvecs = new Vector<Mat>();
+    Mat camera_matrix = null;
     // landmark detection start
-    if (boxes != null && boxes.length != 0 && boxes[0][0] != 0) {
-      Vector<double[]> predictions = new Vector<double[]>();
-      for (float[] box : boxes) {
-        if (box[0] == 0 && box[1] == 0 && box[2] == 0 && box[3] == 0) {
-          break;
-        }
+    if (boxes != null && boxes.length != 0) {
+      Log.d("BOXES_SIZE", String.valueOf(boxes.length));
+
+      smoother_list.autoclean();
+      smoother_list.match(boxes);
+
+      // smooth face bbox
+      for (int b=0;b<boxes.length;b++) {
+        double[] bbox = new double[4];
+        for (int ii=0;ii<4;ii++)
+          bbox[ii] = (double)boxes[b][ii];
+        // Log.d("SMOOTH_DEBUG_BEFORE", bbox[0] + " " + bbox[1] + " " + bbox[2] + " " + bbox[3]);
+        bbox = smoother_list.smooth(bbox, b, CURRENT_TIMESTAMP);
+        // Log.d("SMOOTH_DEBUG_AFTER", bbox[0] + " " + bbox[1] + " " + bbox[2] + " " + bbox[3]);
+        for (int ii=0;ii<4;ii++)
+          boxes[b][ii] = (float)bbox[ii];
+      }
+
+      for (int b=0;b<boxes.length;b++) {
+        float[] box = boxes[b];
         ProcessFactory.LandmarkPreprocessResult landmark_preprocess_result = landmark_preprocess(img, box);
         float[] landmark_detection_input = landmark_preprocess_result.input;
         landmark_detection_tensor = landmark_detection_network.createFloatTensor(1, DemoConfig.landmark_detection_input_H, DemoConfig.landmark_detection_input_W, DemoConfig.landmark_detection_input_C);
@@ -274,8 +302,20 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
             tensor.read(NNoutput, 0, NNoutput.length);
             Log.d("landmark_detection", String.valueOf(NNoutput.length));
             float[] landmark = landmark_postprocess(landmark_preprocess_result, NNoutput);
+
+            double[] landmark_post = new double[landmark.length];
+            for (int ii=0;ii<landmark.length;ii++)
+              landmark_post[ii] = (double)landmark[ii];
+            landmark_post = smoother_list.smooth(landmark_post, b, CURRENT_TIMESTAMP);
+            for (int ii=0;ii<landmark.length;ii++)
+              landmark[ii] = (float)landmark_post[ii];
+
             landmarks.addElement(landmark);
+
             ProcessFactory.GazePreprocessResult gaze_preprocess_result = gaze_preprocess(img, landmark);
+            rvecs.addElement(gaze_preprocess_result.rvec);
+            tvecs.addElement(gaze_preprocess_result.tvec);
+            camera_matrix = gaze_preprocess_result.camera_matrix;
             gaze_estimation_face_tensor = gaze_estimation_network.createFloatTensor(1, DemoConfig.gaze_estimation_face_input_H, DemoConfig.gaze_estimation_face_input_W, DemoConfig.gaze_estimation_face_input_C);
             gaze_estimation_leye_tensor = gaze_estimation_network.createFloatTensor(1, DemoConfig.gaze_estimation_eye_input_H, DemoConfig.gaze_estimation_eye_input_W, DemoConfig.gaze_estimation_eye_input_C);
             gaze_estimation_reye_tensor = gaze_estimation_network.createFloatTensor(1, DemoConfig.gaze_estimation_eye_input_H, DemoConfig.gaze_estimation_eye_input_W, DemoConfig.gaze_estimation_eye_input_C);
@@ -298,31 +338,26 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
               if (gaze_output.getKey().equals(DemoConfig.gaze_estimation_model_out)) {
                 NNoutput = new float[gaze_tensor.getSize()];
                 gaze_tensor.read(NNoutput, 0, NNoutput.length);
-                Log.d("gaze_estimation", String.valueOf(NNoutput[0])+" "+String.valueOf(NNoutput[1])+" "+String.valueOf(NNoutput.length));
+                // Log.d("gaze_estimation", String.valueOf(NNoutput[0])+" "+String.valueOf(NNoutput[1])+" "+String.valueOf(NNoutput.length));
                 float[] gaze_pitchyaw = gaze_postprocess(NNoutput, gaze_preprocess_result.R);
+
+                double[] gaze_pitchyaw_post = new double[gaze_pitchyaw.length];
+                for (int ii=0;ii<gaze_pitchyaw_post.length;ii++)
+                  gaze_pitchyaw_post[ii] = (double)gaze_pitchyaw[ii];
+                gaze_pitchyaw_post = smoother_list.smooth(gaze_pitchyaw_post, b, CURRENT_TIMESTAMP);
+                for (int ii=0;ii<gaze_pitchyaw_post.length;ii++)
+                  gaze_pitchyaw[ii] = (float)gaze_pitchyaw_post[ii];
+
                 gazes.addElement(gaze_pitchyaw);
-                double[] prediction = concat_prediction(box, landmark, gaze_pitchyaw);
-                predictions.addElement(prediction);
               }
             }
           }
         }
       }
       // landamrk detection end
-      predictions = smoother_list.smooth_and_update(predictions, (double)System.currentTimeMillis() / 1000.0);
-      for (int i=0;i<predictions.size();i++) {
-        float[] box = new float[4];
-        float[] landmark = new float[98*2];
-        float[] gaze_pitchyaw = new float[2];
-        Log.d("BOX_SMOOTH_BEFORE", boxes[i][0] + " " + boxes[i][1] + " " + boxes[i][2] + " " + boxes[i][3]);
-        split_prediction(predictions.elementAt(i), box, landmark, gaze_pitchyaw);
-        boxes[i] = box;
-        Log.d("BOX_SMOOTH_AFTER", boxes[i][0] + " " + boxes[i][1] + " " + boxes[i][2] + " " + boxes[i][3]);
-        landmarks.setElementAt(landmark, i);
-        gazes.setElementAt(gaze_pitchyaw, i);
-      }
       for (int i=0;i<gazes.size();i++) {
         drawgaze(img, gazes.elementAt(i), landmarks.elementAt(i));
+        drawheadpose(img, rvecs.elementAt(i), tvecs.elementAt(i), camera_matrix);
       }
       Utils.matToBitmap(img, croppedBitmap);
       croppedBitmap.getPixels(pixs,0, DemoConfig.crop_W, 0, 0,DemoConfig.crop_W, DemoConfig.crop_H);

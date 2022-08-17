@@ -1,5 +1,8 @@
 package org.tensorflow.lite.examples.gaze_estimation;
 
+import static org.tensorflow.lite.examples.gaze_estimation.DemoConfig.CONF_THR;
+import static org.tensorflow.lite.examples.gaze_estimation.DemoConfig.NMS_THR;
+
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -102,15 +105,15 @@ public class DetectionUtils {
             boxes_xyxy[i][2] = (boxes[i][0] + boxes[i][2] / 2) / ratioX;
             boxes_xyxy[i][3] = (boxes[i][1] + boxes[i][3] / 2) / ratioY;
         }
-        float[][] det = standard_nms(boxes_xyxy, scores, 0.5f, 0.45f, false);
-        Log.d("junyan", String.valueOf(det.length));
-        for (int i=0;i<det.length;i++) {
-            if (det[i][0] == 0) {
-                Log.d("junyan", "total det: " + String.valueOf(i));
-                break;
-            }
-        }
-        return det;
+        float[][] det = standard_nms(boxes_xyxy, scores, CONF_THR, NMS_THR, false);
+        int L;
+        for (L=0;L<det.length;L++)
+        if (det[L][0] == 0 && det[L][1] == 0 && det[L][2] == 0 && det[L][3] == 0)
+            break;
+        float[][] final_det = new float[L][5];
+        for (int i=0;i<L;i++)
+            final_det[i] = det[i];
+        return final_det;
     }
 
 
@@ -131,7 +134,7 @@ public class DetectionUtils {
             }
         }
 
-        float[][] out_boxes = new float[box_kept][6];
+        float[][] out_boxes = new float[box_kept][5];
         int nms_out_boxes = 0;
         //nms and merge
         while(true){
