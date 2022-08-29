@@ -1,26 +1,19 @@
-# Getting TensorFlow Lite Models on Android Apps
+# Gaze Estimation Android Demo
 
-[TensorFlow Lite](https://tensorflow.org/lite) makes it very easy to run inference on Android devices. In this guide, you'll learn how to get a pretrained model running in an Android app.
+## Introduction
 
-## Setup
+This is a real-time gaze estimation demo running on Qualcomm GPU. It supports multi-person high-quality face detection, facial landmark detection, headpose estimation and gaze estimation, and still runs at real-time when all functionalities are enabled.
 
-First, install [Android Studio](https://developer.android.com/studio/), the official IDE for Android app development. We'll need this to build and run the Android app.
+![image.png](https://s2.loli.net/2022/08/29/jkL6SzQE5bqZOiw.png)
 
-Next, you need to enable developer mode on your Android device:
+Video demo link: https://drive.google.com/file/d/1z4He0zVHlPRfaDlUv0mS623lYrsOppJv/view?usp=sharing
 
-1. Open the Settings application on your phone.
-2. Scroll down to the "About Phone" or "About Device" section.
-3. Find the section titled "Build number" and tap it seven times.
-4. Now, go back to the main Settings page. You should find "Developer Options" either in the main page, or under the "System" tab.
+## Usage
 
-Now enable USB debugging in the "Developer Options" tab.
+**NOTICE: This demo can only run on Qualcomm GPU.**
 
-## Building the App
+Download model files from: [Google Drive](https://drive.google.com/drive/folders/1jEL7o55bmsSCmJX9ihByaHyBNZYX0CF7?usp=sharing). There should be three .dlc files.
 
-Now, let's open up Android Studio and open the project. Click on `Open an existing project` and select `experimental/android_demo/Object detection` as the project folder.
+Push all three .dlc model files to device folder `/data/local/tmp/`, etc. `adb push face_detection.dlc /data/local/tmp/`.   
 
-Using a USB cable, plug your Android device into your computer. Then, hit `Build -> Make Project` (or `⌘F9`) to build the project. 
-
-## Running the App on Your Device
-
-Simply hit `Run -> Run 'app'` to run the app on your device. You should now have a working image classifier that performs live person detection.
+Compile the project or simply install the .apk, and enjoy the demo!
